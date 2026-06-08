@@ -1,0 +1,62 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: todo-postgres
+    environment:
+      POSTGRES_DB: todoapp
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./apps/database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todoapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  auth-service:
+    build: ./apps/auth-service
+    container_name: auth-service
+    environment:
+      PORT: 5001
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/todoapp
+      JWT_SECRET: secretkey
+      NODE_ENV: development
+    ports:
+      - "5001:5001"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  todo-service:
+    build: ./apps/todo-service
+    container_name: todo-service
+    environment:
+      PORT: 5002
+      DATABASE_URL: postgres://postgres:postgres@postgres:5432/todoapp
+      JWT_SECRET: secretkey
+      NODE_ENV: development
+    ports:
+      - "5002:5002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: ./apps/frontend
+      args:
+        VITE_AUTH_API_URL: http://localhost:5001
+        VITE_TODO_API_URL: http://localhost:5002
+    container_name: frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - auth-service
+      - todo-service
+
+volumes:
+  postgres_data:
