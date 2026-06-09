@@ -1,11 +1,11 @@
 import axios from 'axios';
 
 export const authApi = axios.create({
-  baseURL: import.meta.env.VITE_AUTH_API_URL || 'http://localhost:5001',
+  baseURL: '/api/auth',
 });
 
 export const todoApi = axios.create({
-  baseURL: import.meta.env.VITE_TODO_API_URL || 'http://localhost:5002',
+  baseURL: '/api/todos',
 });
 
 todoApi.interceptors.request.use((config) => {
