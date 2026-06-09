@@ -8,7 +8,7 @@ export default function Dashboard() {
   const [error, setError] = useState('');
 
   async function loadTodos() {
-    const res = await todoApi.get('/api/todos');
+    const res = await todoApi.get('/');
     setTodos(res.data);
   }
 
@@ -19,18 +19,18 @@ export default function Dashboard() {
   async function addTodo(e) {
     e.preventDefault();
     if (!title.trim()) return;
-    const res = await todoApi.post('/api/todos', { title });
+    const res = await todoApi.post('/', { title });
     setTodos([res.data, ...todos]);
     setTitle('');
   }
 
   async function toggleTodo(todo) {
-    const res = await todoApi.put(`/api/todos/${todo.id}`, { completed: !todo.completed });
+    const res = await todoApi.put(`/${todo.id}`, { completed: !todo.completed });
     setTodos(todos.map(t => t.id === todo.id ? res.data : t));
   }
 
   async function deleteTodo(id) {
-    await todoApi.delete(`/api/todos/${id}`);
+    await todoApi.delete(`/${id}`);
     setTodos(todos.filter(t => t.id !== id));
   }
 

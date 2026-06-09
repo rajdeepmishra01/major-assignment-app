@@ -11,7 +11,7 @@ export default function Login() {
     e.preventDefault();
     setError('');
     try {
-      const res = await authApi.post('/api/auth/login', form);
+      const res = await authApi.post('/login', form);
       localStorage.setItem('token', res.data.token);
       localStorage.setItem('user', JSON.stringify(res.data.user));
       navigate('/');
