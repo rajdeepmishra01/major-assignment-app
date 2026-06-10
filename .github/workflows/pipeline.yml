@@ -57,9 +57,9 @@ jobs:
       - name: Build Docker image
         run: |
           docker build \
-            -t $IMAGE_NAME:${{ github.sha }} \
-            -t $IMAGE_NAME:latest \
-            ./apps/${{ matrix.service }}
+          -t $IMAGE_NAME:${{ github.run_number }} \
+          -t $IMAGE_NAME:latest \
+          ./apps/${{ matrix.service }}
 
       - name: Login to GHCR
         if: github.event_name == 'push'
@@ -72,5 +72,6 @@ jobs:
       - name: Push Docker image
         if: github.event_name == 'push'
         run: |
-          docker push $IMAGE_NAME:${{ github.sha }}
+          docker push $IMAGE_NAME:${{ github.run_number }}
           docker push $IMAGE_NAME:latest
+          
