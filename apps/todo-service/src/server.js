@@ -19,7 +19,73 @@ const httpRequestCounter = new client.Counter({
   labelNames: ['method', 'route', 'status_code']
 });
 
+const todoItemsCreatedCounter = new client.Counter({
+  name: 'todo_items_created_total',
+  help: 'Total todo items created'
+});
+
+const todoItemsDeletedCounter = new client.Counter({
+  name: 'todo_items_deleted_total',
+  help: 'Total todo items deleted'
+});
+
+const todoItemsUpdatedCounter = new client.Counter({
+  name: 'todo_items_updated_total',
+  help: 'Total todo items updated (title or completion status)'
+});
+
+const totalTodosGauge = new client.Gauge({
+  name: 'todo_total_items',
+  help: 'Total todo items currently in the database',
+  async collect() {
+    try {
+      const result = await pool.query('SELECT COUNT(*) FROM todos');
+      this.set(parseInt(result.rows[0].count, 10));
+    } catch (_) {}
+  }
+});
+
+const activeTodosGauge = new client.Gauge({
+  name: 'todo_active_items',
+  help: 'Total incomplete (active) todo items in the database',
+  async collect() {
+    try {
+      const result = await pool.query('SELECT COUNT(*) FROM todos WHERE completed = false');
+      this.set(parseInt(result.rows[0].count, 10));
+    } catch (_) {}
+  }
+});
+
+const completedTodosGauge = new client.Gauge({
+  name: 'todo_completed_items',
+  help: 'Total completed todo items in the database',
+  async collect() {
+    try {
+      const result = await pool.query('SELECT COUNT(*) FROM todos WHERE completed = true');
+      this.set(parseInt(result.rows[0].count, 10));
+    } catch (_) {}
+  }
+});
+
+const uniqueTodoUsersGauge = new client.Gauge({
+  name: 'todo_unique_users',
+  help: 'Number of distinct users who have at least one todo',
+  async collect() {
+    try {
+      const result = await pool.query('SELECT COUNT(DISTINCT user_id) FROM todos');
+      this.set(parseInt(result.rows[0].count, 10));
+    } catch (_) {}
+  }
+});
+
 register.registerMetric(httpRequestCounter);
+register.registerMetric(todoItemsCreatedCounter);
+register.registerMetric(todoItemsDeletedCounter);
+register.registerMetric(todoItemsUpdatedCounter);
+register.registerMetric(totalTodosGauge);
+register.registerMetric(activeTodosGauge);
+register.registerMetric(completedTodosGauge);
+register.registerMetric(uniqueTodoUsersGauge);
 
 app.use(helmet());
 app.use(cors());
@@ -46,11 +112,23 @@ app.use((req, res, next) => {
 
 app.use((req, res, next) => {
   res.on('finish', () => {
+    const routePath = req.route?.path || req.path;
     httpRequestCounter.inc({
       method: req.method,
-      route: req.route?.path || req.path,
+      route: routePath,
       status_code: res.statusCode
     });
+
+    // Business event counters derived from route + method + status
+    if (routePath === '/' && req.method === 'POST' && res.statusCode === 201) {
+      todoItemsCreatedCounter.inc();
+    }
+    if (routePath === '/:id' && req.method === 'DELETE' && res.statusCode === 200) {
+      todoItemsDeletedCounter.inc();
+    }
+    if (routePath === '/:id' && req.method === 'PUT' && res.statusCode === 200) {
+      todoItemsUpdatedCounter.inc();
+    }
   });
   next();
 });
