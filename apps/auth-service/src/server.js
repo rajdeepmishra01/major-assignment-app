@@ -43,7 +43,7 @@ const registeredUsersGauge = new client.Gauge({
     try {
       const result = await pool.query('SELECT COUNT(*) FROM users');
       this.set(parseInt(result.rows[0].count, 10));
-    } catch (_) {}
+    } catch (_) { /* DB unavailable during scrape — skip */ }
   }
 });
 

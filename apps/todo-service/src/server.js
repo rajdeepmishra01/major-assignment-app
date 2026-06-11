@@ -41,7 +41,7 @@ const totalTodosGauge = new client.Gauge({
     try {
       const result = await pool.query('SELECT COUNT(*) FROM todos');
       this.set(parseInt(result.rows[0].count, 10));
-    } catch (_) {}
+    } catch (_) { /* DB unavailable during scrape — skip */ }
   }
 });
 
@@ -52,7 +52,7 @@ const activeTodosGauge = new client.Gauge({
     try {
       const result = await pool.query('SELECT COUNT(*) FROM todos WHERE completed = false');
       this.set(parseInt(result.rows[0].count, 10));
-    } catch (_) {}
+    } catch (_) { /* DB unavailable during scrape — skip */ }
   }
 });
 
@@ -63,7 +63,7 @@ const completedTodosGauge = new client.Gauge({
     try {
       const result = await pool.query('SELECT COUNT(*) FROM todos WHERE completed = true');
       this.set(parseInt(result.rows[0].count, 10));
-    } catch (_) {}
+    } catch (_) { /* DB unavailable during scrape — skip */ }
   }
 });
 
@@ -74,7 +74,7 @@ const uniqueTodoUsersGauge = new client.Gauge({
     try {
       const result = await pool.query('SELECT COUNT(DISTINCT user_id) FROM todos');
       this.set(parseInt(result.rows[0].count, 10));
-    } catch (_) {}
+    } catch (_) { /* DB unavailable during scrape — skip */ }
   }
 });
 
