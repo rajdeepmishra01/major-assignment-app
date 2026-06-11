@@ -1,13 +1,9 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
+import { fileURLToPath } from 'url';
 import client from 'prom-client';
-import todoRoutes from './routes/todo.routes.js';
+import { createApp } from './app.js';
 import { ensureTodoTables, pool } from './config/db.js';
-import { errorHandler } from './middleware/errorHandler.js';
 
-const app = express();
 const port = process.env.PORT || 5002;
 
 const register = new client.Registry();
@@ -87,37 +83,25 @@ register.registerMetric(activeTodosGauge);
 register.registerMetric(completedTodosGauge);
 register.registerMetric(uniqueTodoUsersGauge);
 
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-
-app.use((req, res, next) => {
+// ── Named middleware (passed into createApp so they run before routes) ────────
+function loggingMiddleware(req, res, next) {
   const startedAt = Date.now();
-
   res.on('finish', () => {
-    const durationMs = Date.now() - startedAt;
-    console.log(
-      JSON.stringify({
-        service: 'todo-service',
-        method: req.method,
-        path: req.originalUrl,
-        status: res.statusCode,
-        durationMs
-      })
-    );
+    console.log(JSON.stringify({
+      service: 'todo-service',
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    }));
   });
-
   next();
-});
+}
 
-app.use((req, res, next) => {
+function metricsMiddleware(req, res, next) {
   res.on('finish', () => {
     const routePath = req.route?.path || req.path;
-    httpRequestCounter.inc({
-      method: req.method,
-      route: routePath,
-      status_code: res.statusCode
-    });
+    httpRequestCounter.inc({ method: req.method, route: routePath, status_code: res.statusCode });
 
     // Business event counters derived from route + method + status
     if (routePath === '/' && req.method === 'POST' && res.statusCode === 201) {
@@ -131,24 +115,25 @@ app.use((req, res, next) => {
     }
   });
   next();
-});
+}
 
-app.get('/health', async (req, res) => {
-  await pool.query('SELECT 1');
-  res.json({ service: 'todo-service', status: 'healthy' });
-});
+// ── Build the app with injected middleware ────────────────────────────────────
+const app = createApp({ middleware: [loggingMiddleware, metricsMiddleware] });
 
-app.get('/metrics', async (req, res) => {
+app.get('/metrics', async (_req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
 
-app.use('/api/todos', todoRoutes);
-app.use(errorHandler);
+// ── Start the server only when run directly (not imported by tests) ───────────
+const isMain = Boolean(process.argv[1]) &&
+  fileURLToPath(import.meta.url) === process.argv[1];
 
-ensureTodoTables()
-  .then(() => app.listen(port, () => console.log(`todo-service running on ${port}`)))
-  .catch((err) => {
-    console.error('failed to initialize todo-service', err);
-    process.exit(1);
-  });
+if (isMain) {
+  ensureTodoTables()
+    .then(() => app.listen(port, () => console.log(`todo-service running on ${port}`)))
+    .catch((err) => {
+      console.error('failed to initialize todo-service', err);
+      process.exit(1);
+    });
+}
