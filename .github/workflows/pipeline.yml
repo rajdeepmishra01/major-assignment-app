@@ -1,4 +1,4 @@
-name: CI — Build, Test, Scan and Push
+name: CI — Build, Test, Sonar, Scan and Push
 
 on:
   push:
@@ -13,12 +13,9 @@ on:
 permissions:
   contents: read
   packages: write
-  security-events: write   # Trivy SARIF upload to GitHub Security tab
-  pull-requests: read      # SonarCloud PR decoration
+  security-events: write
+  pull-requests: read
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Job 1 — Lint & frontend build (unchanged gate)
-# ──────────────────────────────────────────────────────────────────────────────
 jobs:
   lint:
     name: Lint and Build
@@ -39,9 +36,6 @@ jobs:
       - name: Run lint and frontend build
         run: npm run ci
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Job 2 — Unit tests with coverage (auth-service and todo-service)
-# ──────────────────────────────────────────────────────────────────────────────
   test:
     name: Unit Tests — ${{ matrix.service }}
     runs-on: ubuntu-latest
@@ -77,17 +71,15 @@ jobs:
           path: apps/${{ matrix.service }}/coverage/lcov.info
           if-no-files-found: warn
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Job 3 — SonarCloud static analysis + quality gate
-# ──────────────────────────────────────────────────────────────────────────────
   sonar:
     name: SonarCloud Analysis
     runs-on: ubuntu-latest
-    needs: test
-    if: github.ref == 'refs/heads/main'
+    needs:
+      - lint
+      - test
 
     steps:
-      - name: Checkout repository (full history for blame)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -105,18 +97,17 @@ jobs:
           path: apps/todo-service/coverage
 
       - name: SonarCloud Scan
-        uses: SonarSource/sonarcloud-github-action@master
+        uses: SonarSource/sonarqube-scan-action@v6
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
-# ──────────────────────────────────────────────────────────────────────────────
-# Job 4 — Build Docker image → Trivy image scan → Push to GHCR
-# ──────────────────────────────────────────────────────────────────────────────
   docker:
     name: Build, Scan and Push — ${{ matrix.service }}
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    needs:
+      - lint
+      - test
+      - sonar
 
     strategy:
       fail-fast: false
@@ -133,18 +124,19 @@ jobs:
       - name: Set image name
         run: |
           echo "IMAGE_NAME=ghcr.io/${{ github.repository_owner }}/${{ matrix.service }}" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ github.run_number }}" >> $GITHUB_ENV
 
       - name: Build Docker image
         run: |
           docker build \
-            -t $IMAGE_NAME:${{ github.run_number }} \
+            -t $IMAGE_NAME:$IMAGE_TAG \
             -t $IMAGE_NAME:latest \
             ./apps/${{ matrix.service }}
 
       - name: Trivy — scan image for vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ${{ env.IMAGE_NAME }}:${{ github.run_number }}
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
           format: sarif
           output: trivy-${{ matrix.service }}.sarif
           severity: HIGH,CRITICAL
@@ -153,8 +145,7 @@ jobs:
           exit-code: '0'
 
       - name: Upload Trivy results to GitHub Security tab
-        uses: github/codeql-action/upload-sarif@v3
-        # Always upload so results are visible even when the scan step failed
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         with:
           sarif_file: trivy-${{ matrix.service }}.sarif
@@ -171,5 +162,5 @@ jobs:
       - name: Push Docker image
         if: github.event_name == 'push'
         run: |
-          docker push $IMAGE_NAME:${{ github.run_number }}
+          docker push $IMAGE_NAME:$IMAGE_TAG
           docker push $IMAGE_NAME:latest
