@@ -5,7 +5,10 @@
   "scripts": {
     "lint": "eslint apps",
     "build:frontend": "cd apps/frontend && npm install && npm run build",
-    "ci": "npm run lint && npm run build:frontend"
+    "ci": "npm run lint && npm run build:frontend",
+    "test:auth": "cd apps/auth-service && npm install && npm test",
+    "test:todo": "cd apps/todo-service && npm install && npm test",
+    "test": "npm run test:auth && npm run test:todo"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

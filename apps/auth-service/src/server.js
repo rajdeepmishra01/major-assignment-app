@@ -1,13 +1,9 @@
 import 'dotenv/config';
-import express from 'express';
-import cors from 'cors';
-import helmet from 'helmet';
+import { fileURLToPath } from 'url';
 import client from 'prom-client';
-import authRoutes from './routes/auth.routes.js';
+import { createApp } from './app.js';
 import { ensureAuthTables, pool } from './config/db.js';
-import { errorHandler } from './middleware/errorHandler.js';
 
-const app = express();
 const port = process.env.PORT || 5001;
 
 const register = new client.Registry();
@@ -19,41 +15,93 @@ const httpRequestCounter = new client.Counter({
   labelNames: ['method', 'route', 'status_code']
 });
 
+const userRegistrationsCounter = new client.Counter({
+  name: 'auth_user_registrations_total',
+  help: 'Total successful user registrations'
+});
+
+const loginAttemptsCounter = new client.Counter({
+  name: 'auth_login_attempts_total',
+  help: 'Total login attempts',
+  labelNames: ['result']
+});
+
+const tokenValidationsCounter = new client.Counter({
+  name: 'auth_token_validations_total',
+  help: 'Total token validation requests',
+  labelNames: ['result']
+});
+
+const registeredUsersGauge = new client.Gauge({
+  name: 'auth_registered_users_total',
+  help: 'Total registered users currently in the database',
+  async collect() {
+    try {
+      const result = await pool.query('SELECT COUNT(*) FROM users');
+      this.set(parseInt(result.rows[0].count, 10));
+    } catch (_) { /* DB unavailable during scrape — skip */ }
+  }
+});
+
 register.registerMetric(httpRequestCounter);
+register.registerMetric(userRegistrationsCounter);
+register.registerMetric(loginAttemptsCounter);
+register.registerMetric(tokenValidationsCounter);
+register.registerMetric(registeredUsersGauge);
 
-app.use(helmet());
-app.use(cors());
-app.use(express.json());
-
-app.use((req, res, next) => {
+// ── Named middleware (passed into createApp so they run before routes) ────────
+function loggingMiddleware(req, res, next) {
+  const startedAt = Date.now();
   res.on('finish', () => {
-    httpRequestCounter.inc({
+    console.log(JSON.stringify({
+      service: 'auth-service',
       method: req.method,
-      route: req.route?.path || req.path,
-      status_code: res.statusCode
-    });
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+    }));
   });
   next();
-});
+}
 
-app.get('/health', async (req, res) => {
-  await pool.query('SELECT 1');
-  res.json({ service: 'auth-service', status: 'healthy' });
-});
+function metricsMiddleware(req, res, next) {
+  res.on('finish', () => {
+    const routePath = req.route?.path || req.path;
+    httpRequestCounter.inc({ method: req.method, route: routePath, status_code: res.statusCode });
 
-app.get('/metrics', async (req, res) => {
+    // Business event counters derived from route + status
+    if (routePath === '/register' && req.method === 'POST' && res.statusCode === 201) {
+      userRegistrationsCounter.inc();
+    }
+    if (routePath === '/login' && req.method === 'POST') {
+      loginAttemptsCounter.inc({ result: res.statusCode === 200 ? 'success' : 'failure' });
+    }
+    if (routePath === '/validate' && req.method === 'GET') {
+      tokenValidationsCounter.inc({ result: res.statusCode === 200 ? 'valid' : 'invalid' });
+    }
+  });
+  next();
+}
+
+// ── Build the app with injected middleware ────────────────────────────────────
+const app = createApp({ middleware: [loggingMiddleware, metricsMiddleware] });
+
+app.get('/metrics', async (_req, res) => {
   res.set('Content-Type', register.contentType);
   res.end(await register.metrics());
 });
 
-app.use('/api/auth', authRoutes);
-app.use(errorHandler);
+// ── Start the server only when run directly (not imported by tests) ───────────
+const isMain = Boolean(process.argv[1]) &&
+  fileURLToPath(import.meta.url) === process.argv[1];
 
-ensureAuthTables()
-  .then(() => {
-    app.listen(port, () => console.log(`auth-service running on ${port}`));
-  })
-  .catch((err) => {
-    console.error('failed to initialize auth-service', err);
-    process.exit(1);
-  });
+if (isMain) {
+  ensureAuthTables()
+    .then(() => {
+      app.listen(port, () => console.log(`auth-service running on ${port}`));
+    })
+    .catch((err) => {
+      console.error('failed to initialize auth-service', err);
+      process.exit(1);
+    });
+}
