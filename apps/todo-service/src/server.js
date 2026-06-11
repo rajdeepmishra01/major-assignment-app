@@ -26,6 +26,25 @@ app.use(cors());
 app.use(express.json());
 
 app.use((req, res, next) => {
+  const startedAt = Date.now();
+
+  res.on('finish', () => {
+    const durationMs = Date.now() - startedAt;
+    console.log(
+      JSON.stringify({
+        service: 'todo-service',
+        method: req.method,
+        path: req.originalUrl,
+        status: res.statusCode,
+        durationMs
+      })
+    );
+  });
+
+  next();
+});
+
+app.use((req, res, next) => {
   res.on('finish', () => {
     httpRequestCounter.inc({
       method: req.method,
