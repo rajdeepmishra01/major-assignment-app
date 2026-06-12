@@ -97,11 +97,7 @@ jobs:
           path: apps/todo-service/coverage
 
       - name: SonarCloud Scan
-        id: sonar-scan
         uses: SonarSource/sonarqube-scan-action@v6
-        with:
-          args: >
-            -Dsonar.branch.name=${{ github.ref_name }}
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io

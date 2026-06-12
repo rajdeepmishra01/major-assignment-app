@@ -182,3 +182,55 @@ describe('DELETE /api/todos/:id', () => {
     expect(res.body.id).toBe(1);
   });
 });
+
+
+describe('todo-service error handling', () => {
+  it('returns 500 when health database query fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await request(app).get('/health');
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe('db down');
+  });
+
+  it('returns 401 for invalid JWT token', async () => {
+    const res = await request(app)
+      .get('/api/todos')
+      .set('Authorization', 'Bearer invalid.token.value');
+
+    expect(res.status).toBe(401);
+    expect(res.body.message).toBe('invalid or expired token');
+  });
+
+  it('returns 500 when listing todos fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('list failed'));
+
+    const res = await request(app)
+      .get('/api/todos')
+      .set(authHeader());
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when creating todo fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('insert failed'));
+
+    const res = await request(app)
+      .post('/api/todos')
+      .set(authHeader())
+      .send({ title: 'New todo' });
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when deleting todo fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('delete failed'));
+
+    const res = await request(app)
+      .delete('/api/todos/1')
+      .set(authHeader());
+
+    expect(res.status).toBe(500);
+  });
+});

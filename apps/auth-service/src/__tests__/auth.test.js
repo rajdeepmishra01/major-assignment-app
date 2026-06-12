@@ -174,3 +174,35 @@ describe('GET /api/auth/validate', () => {
     expect(res.body.user.email).toBe('alice@test.com');
   });
 });
+
+
+describe('auth-service error handling', () => {
+  it('returns 500 when health database query fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('db down'));
+
+    const res = await request(app).get('/health');
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe('db down');
+  });
+
+  it('returns 500 when register duplicate check fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('select failed'));
+
+    const res = await request(app)
+      .post('/api/auth/register')
+      .send({ username: 'alice', email: 'alice@test.com', password: 'password123' });
+
+    expect(res.status).toBe(500);
+  });
+
+  it('returns 500 when login query fails', async () => {
+    pool.query.mockRejectedValueOnce(new Error('login db failed'));
+
+    const res = await request(app)
+      .post('/api/auth/login')
+      .send({ email: 'alice@test.com', password: 'password123' });
+
+    expect(res.status).toBe(500);
+  });
+});
