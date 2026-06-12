@@ -95,16 +95,32 @@ jobs:
         with:
           name: coverage-todo-service
           path: apps/todo-service/coverage
-
-      - name: Normalize LCOV paths
+          
+      - name: Normalize LCOV paths for SonarCloud
         run: |
+          # Convert Windows backslashes to Linux slashes
           sed -i 's#\\#/#g' apps/auth-service/coverage/lcov.info
           sed -i 's#\\#/#g' apps/todo-service/coverage/lcov.info
+
+          # Prefix paths so Sonar can match files from repo root
+          sed -i 's#SF:src/#SF:apps/auth-service/src/#g' apps/auth-service/coverage/lcov.info
+          sed -i 's#SF:src/#SF:apps/todo-service/src/#g' apps/todo-service/coverage/lcov.info
+
+          echo "Auth LCOV:"
           grep "SF:" apps/auth-service/coverage/lcov.info | head
+
+          echo "Todo LCOV:"
           grep "SF:" apps/todo-service/coverage/lcov.info | head
 
       - name: SonarCloud Scan
         uses: SonarSource/sonarqube-scan-action@v6
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: SonarCloud Quality Gate check
+        uses: SonarSource/sonarqube-quality-gate-action@v1
+        timeout-minutes: 5
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io
