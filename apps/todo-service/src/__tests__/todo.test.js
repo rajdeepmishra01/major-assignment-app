@@ -35,6 +35,51 @@ beforeEach(() => {
   vi.resetAllMocks();
 });
 
+describe('createApp', () => {
+  it('creates a todo-service Express app and wires middleware/routes', async () => {
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    const localApp = createApp();
+
+    const res = await request(localApp).get('/health');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      service: 'todo-service',
+      status: 'healthy',
+    });
+  });
+
+  it('applies injected middleware before routes', async () => {
+    const injectedMiddleware = (req, _res, next) => {
+      req.headers.authorization = `Bearer ${AUTH_TOKEN}`;
+      next();
+    };
+
+    pool.query.mockResolvedValueOnce({ rows: [] });
+
+    const localApp = createApp({
+      middleware: [injectedMiddleware],
+    });
+
+    const res = await request(localApp).get('/api/todos');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([]);
+  });
+
+  it('passes health check database errors to error handler', async () => {
+    pool.query.mockRejectedValueOnce(new Error('db down'));
+
+    const localApp = createApp();
+
+    const res = await request(localApp).get('/health');
+
+    expect(res.status).toBe(500);
+    expect(res.body.message).toBe('db down');
+  });
+});
+
 // ── GET /health ───────────────────────────────────────────────────────────────
 describe('GET /health', () => {
   it('returns 200 with service name and status', async () => {
