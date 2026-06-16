@@ -168,6 +168,19 @@ jobs:
           ignore-unfixed: true
           exit-code: 1
 
+      - name: Trivy — generate SARIF report
+        uses: aquasecurity/trivy-action@v0.36.0
+        if: always()
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
+          format: sarif
+          output: trivy-${{ matrix.service }}.sarif
+          severity: CRITICAL,HIGH
+          vuln-type: os,library
+          scanners: vuln
+          ignore-unfixed: true
+          exit-code: 0
+
       - name: Upload Trivy results to GitHub Security tab
         uses: github/codeql-action/upload-sarif@v4
         if: always()
